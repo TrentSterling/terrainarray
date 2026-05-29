@@ -24,29 +24,24 @@ void unpackFloat(float p, out float a, out float b){
 }
 ```
 
-The tutorial page has the full walkthrough: JS splat painter, top-4 weight extraction, the GLSL fragment shader, the bilinear-filtering gotcha, plus a verbatim Stack Overflow mirror for the 2015 post the whole technique traces back to.
+Full walkthrough on the tutorial page: JS splat painter, top-4 weight extraction, the GLSL fragment shader, the bilinear-filtering gotcha, plus a verbatim Stack Overflow mirror for the 2015 post the whole technique traces back to.
 
 ## Files
 
 | Path | What |
 |------|------|
-| `index.html` | The tutorial (long-form, 12 sections, embeds the demo via iframe) |
+| `index.html` | The tutorial (long-form, embeds the demo via iframe) |
 | `demo/index.html` | The standalone WebGL2 demo (32 textures, 200 splats, top-4 extraction, isolation UI) |
-| `nuka-message.txt` | Nukadelic's original Unreal shader-graph debug node, 101 lines, copied verbatim |
-| `img/` | Screenshots of Nuka's BitShift1 and Pack/Unpack node graphs |
+| `nuka-message.txt` | Nukadelic's Unity shader-graph debug node, 101 lines, copied verbatim |
 
 ## Credits
 
-- **Nukadelic**: the technique. Shipped it on Meta Quest 2 with `tex2d_array` index packing in a paint texture.
-- **Adam Miles**: the `asfloat` / `asuint` pair-packing pattern, [answered on Stack Overflow](https://stackoverflow.com/questions/32915724/pack-two-floats-within-range-into-one-float/32921832#32921832) Oct 3 2015. Mirrored in the tutorial under CC BY-SA 4.0.
-- **Duck (SCUG)**: for hitting the wall in public and asking the right question.
-- **Trent Sterling**: port to Three.js / WebGL 2, procedural texture library, tutorial page.
+Thanks to Duck for hitting the 16-sampler wall in public, to Nukadelic for explaining how he side-stepped it on Quest VR, and to Adam Miles for the [2015 Stack Overflow answer](https://stackoverflow.com/questions/32915724/pack-two-floats-within-range-into-one-float/32921832#32921832) that's the load-bearing trick. Three.js / WebGL2 port and pages by Tront.
 
 ## License
 
 - Code in `index.html`, `demo/index.html`, plus the JS helpers: **MIT** (see `LICENSE`).
 - Stack Overflow excerpt in `index.html`: reproduced under **CC BY-SA 4.0** with attribution.
 - `nuka-message.txt`: reproduced with Nukadelic's permission.
-- Screenshots in `img/`: Nukadelic's work, shown for educational context.
 
 If you ship something built on this, drop a note in the [tront.xyz Discord](https://tront.xyz/discord/).
