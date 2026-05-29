@@ -1,0 +1,101 @@
+
+uint u = asuint( v );
+
+uint i1 = ( u &0x0000000F );
+uint i2 = ( u &0x000000F0 );
+uint i3 = ( u &0x00000F00 );
+uint i4 = ( u &0x0000F000 );
+uint i5 = ( u &0x000F0000 );
+uint i6 = ( u &0x00F00000 );
+uint i7 = ( u &0x0F000000 );
+uint i8 = ( u &0xF0000000 );
+
+float a1 = ( i1 ) / 15.0;
+float a2 = ( i2 ) / 15.0;
+float a3 = ( i3 ) / 15.0;
+float a4 = ( i4 ) / 15.0;
+float a5 = ( i5 ) / 15.0;
+float a6 = ( i6 ) / 15.0;
+float a7 = ( i7 ) / 15.0;
+float a8 = ( i8 ) / 15.0;
+
+uint b1 = i1;
+uint b2 = i2 >> 4;
+uint b3 = i3 >> 8;
+uint b4 = i4 >> 12;
+uint b5 = i5 >> 16;
+uint b6 = i6 >> 20;
+uint b7 = i7 >> 24;
+uint b8 = i8 >> 28;
+
+uint _line = 0;
+
+Out = 0;
+
+float3 col_1 = float3( 0, 0, 1 );
+float3 col_2 = float3( 1, 1, 0 );
+
+if( uv.y > 0.6 && uv.y < 0.9 )
+{
+       if( uv.x > 0/8.0 && uv.x < 1/8.0 ) Out = lerp( col_1, col_2, a1 );
+  else if( uv.x > 1/8.0 && uv.x < 2/8.0 ) Out = lerp( col_1, col_2, a2 );
+  else if( uv.x > 2/8.0 && uv.x < 3/8.0 ) Out = lerp( col_1, col_2, a3 );
+  else if( uv.x > 3/8.0 && uv.x < 4/8.0 ) Out = lerp( col_1, col_2, a4 );
+  else if( uv.x > 4/8.0 && uv.x < 5/8.0 ) Out = lerp( col_1, col_2, a5 );
+  else if( uv.x > 5/8.0 && uv.x < 6/8.0 ) Out = lerp( col_1, col_2, a6 );
+  else if( uv.x > 6/8.0 && uv.x < 7/8.0 ) Out = lerp( col_1, col_2, a7 );
+  else if( uv.x > 7/8.0 && uv.x < 8/8.0 ) Out = lerp( col_1, col_2, a8 );
+
+  _line = floor( uv.x * 128 ) % 16 ;
+  
+  if( _line == 0 ) Out = 0;
+}
+
+float3 col_3 = float3( 1, 0, 0 );
+float3 col_4 = float3( 0, 1, 0 );
+
+// (*(uint*)&f) & (1 << (position - 1)) != 0
+// u & ( 1 << ( 4 - 1 ) ) != 0
+// u & ( 1 << ( (uint) round( 0 ) + 1 ) )
+
+       if( uv.x > 0/8.0 && uv.x < 1/8.0 - 0.02 ) {
+if( uv.y < 0.48 && uv.y > 0.40 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  0 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.38 && uv.y > 0.30 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  1 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.28 && uv.y > 0.20 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  2 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.18 && uv.y > 0.10 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  3 ) ) ) ) ) ) == 0 ? 0 : 1 );
+} else if( uv.x > 1/8.0 && uv.x < 2/8.0 - 0.02 ) {
+if( uv.y < 0.48 && uv.y > 0.40 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  4 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.38 && uv.y > 0.30 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  5 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.28 && uv.y > 0.20 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  6 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.18 && uv.y > 0.10 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  7 ) ) ) ) ) ) == 0 ? 0 : 1 );
+} else if( uv.x > 2/8.0 && uv.x < 3/8.0 - 0.02 ) {
+if( uv.y < 0.48 && uv.y > 0.40 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  8 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.38 && uv.y > 0.30 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round(  9 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.28 && uv.y > 0.20 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 10 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.18 && uv.y > 0.10 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 11 ) ) ) ) ) ) == 0 ? 0 : 1 );
+} else if( uv.x > 3/8.0 && uv.x < 4/8.0 - 0.02 ) {
+if( uv.y < 0.48 && uv.y > 0.40 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 12 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.38 && uv.y > 0.30 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 13 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.28 && uv.y > 0.20 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 14 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.18 && uv.y > 0.10 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 15 ) ) ) ) ) ) == 0 ? 0 : 1 );
+} else if( uv.x > 4/8.0 && uv.x < 5/8.0 - 0.02 ) {
+if( uv.y < 0.48 && uv.y > 0.40 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 16 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.38 && uv.y > 0.30 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 17 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.28 && uv.y > 0.20 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 18 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.18 && uv.y > 0.10 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 19 ) ) ) ) ) ) == 0 ? 0 : 1 );
+} else if( uv.x > 5/8.0 && uv.x < 6/8.0 - 0.02 ) {
+if( uv.y < 0.48 && uv.y > 0.40 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 20 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.38 && uv.y > 0.30 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 21 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.28 && uv.y > 0.20 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 22 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.18 && uv.y > 0.10 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 23 ) ) ) ) ) ) == 0 ? 0 : 1 );
+} else if( uv.x > 6/8.0 && uv.x < 7/8.0 - 0.02 ) {
+if( uv.y < 0.48 && uv.y > 0.40 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 24 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.38 && uv.y > 0.30 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 25 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.28 && uv.y > 0.20 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 26 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.18 && uv.y > 0.10 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 27 ) ) ) ) ) ) == 0 ? 0 : 1 );
+} else if( uv.x > 7/8.0 && uv.x < 8/8.0 - 0.02 ) {
+if( uv.y < 0.48 && uv.y > 0.40 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 28 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.38 && uv.y > 0.30 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 29 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.28 && uv.y > 0.20 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 30 ) ) ) ) ) ) == 0 ? 0 : 1 );
+if( uv.y < 0.18 && uv.y > 0.10 ) Out = lerp( col_3, col_4, ( ( float ) ( u & ( 1 << ( 1 + ( ( uint ) round( 31 ) ) ) ) ) ) == 0 ? 0 : 1 );
+}

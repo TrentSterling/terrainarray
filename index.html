@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TerrainArray — Bit-packed splat maps in WebGL2</title>
+<meta name="description" content="How to blend 32+ terrain textures through a single sampler in WebGL2, by packing four layer IDs and four blend weights into one RGBA float per pixel. Live demo + Stack Overflow mirror + Discord origin story.">
+<meta property="og:title" content="TerrainArray — Bit-packed splat maps in WebGL2">
+<meta property="og:description" content="Beyond the 16-sampler limit. 32 textures, 1 sampler, 1 packed RGBA float per pixel. Tutorial + live demo.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://tront.xyz/terrainarray/">
+<meta property="og:image" content="https://tront.xyz/terrainarray/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080a0c;
+  --bg-2:#0c1014;
+  --panel:rgba(12,15,18,0.66);
+  --line:rgba(140,160,170,0.13);
+  --line-bright:rgba(140,170,175,0.24);
+  --txt:#d3dadd; --dim:#8b969d; --dimmer:#525b62;
+  --accent:#2ff2cd; --accent-glow:rgba(47,242,205,0.4);
+  --warn:#ffce5e;
+  --lime:#bff04a;
+  --sans:'Hanken Grotesk',system-ui,sans-serif;
+  --disp:'Chakra Petch',var(--sans);
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{ margin:0; background:var(--bg); color:var(--txt);
+  font-family:var(--sans); -webkit-font-smoothing:antialiased; line-height:1.6; }
+a{ color:var(--accent); text-decoration:none; border-bottom:1px solid rgba(47,242,205,.3); transition:border-color .15s; }
+a:hover{ border-bottom-color:var(--accent); }
+
+/* ====== layout ====== */
+.wrap{ max-width:860px; margin:0 auto; padding:0 22px; }
+section{ padding:54px 0; border-top:1px solid var(--line); }
+section:first-of-type{ border-top:0; }
+.eyebrow{ font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 10px; }
+h1,h2,h3{ font-family:var(--disp); letter-spacing:.005em; color:#eef3f4; margin:0 0 18px; }
+h1{ font-size:48px; font-weight:700; line-height:1.05; }
+h1 b{ color:var(--accent); font-weight:700; }
+h2{ font-size:30px; font-weight:600; }
+h3{ font-size:18px; font-weight:600; margin-top:32px; }
+p{ margin:0 0 16px; }
+p code, li code, em code{ font-family:var(--mono); font-size:.88em; color:var(--accent); background:rgba(47,242,205,.06); padding:1px 5px; border-radius:4px; }
+em{ font-style:normal; color:#eef3f4; }
+ul,ol{ padding-left:22px; margin:0 0 16px; }
+ul li, ol li{ margin-bottom:8px; }
+hr{ border:0; height:1px; background:var(--line); margin:30px 0; }
+
+/* ====== HERO ====== */
+.hero{ padding:88px 0 64px; position:relative; overflow:hidden; }
+.hero::before{ content:''; position:absolute; inset:-100px -100px auto -100px; height:520px;
+  background:radial-gradient(60% 70% at 50% 30%, rgba(47,242,205,.10), transparent 70%); pointer-events:none; }
+.hero .wrap{ position:relative; z-index:1; }
+.hero .eyebrow{ font-size:12px; }
+.hero h1{ max-width:720px; }
+.hero .tag{ font-size:18px; color:var(--dim); max-width:640px; margin:0 0 26px; }
+.hero .tag b{ color:var(--txt); font-weight:600; }
+.badges{ display:flex; flex-wrap:wrap; gap:8px; margin:18px 0 28px; }
+.badge{ display:inline-flex; align-items:baseline; gap:6px; padding:6px 12px;
+  border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.02); font-size:13px; color:var(--dim);}
+.badge b{ font-family:var(--mono); font-weight:700; font-size:13px; color:var(--accent); }
+.cta{ display:inline-flex; gap:10px; flex-wrap:wrap; }
+.btn{ display:inline-flex; align-items:center; gap:8px; padding:12px 18px; border-radius:9px;
+  font-family:var(--sans); font-weight:600; font-size:14px; border:1px solid transparent; cursor:pointer;
+  text-decoration:none; transition:filter .15s, box-shadow .15s, transform .05s, border-color .15s, color .15s; }
+.btn.primary{ background:var(--accent); color:#062019; border-color:var(--accent); }
+.btn.primary:hover{ filter:brightness(1.07); box-shadow:0 8px 22px var(--accent-glow); }
+.btn.ghost{ background:transparent; color:var(--txt); border-color:var(--line-bright); }
+.btn.ghost:hover{ border-color:var(--accent); color:var(--accent); }
+.btn[href]{ border-bottom:1px solid transparent; }
+.btn[href].primary{ border-bottom-color:var(--accent); }
+
+/* ====== Embedded demo iframe ====== */
+.demo-frame{ position:relative; border:1px solid var(--line-bright); border-radius:14px; overflow:hidden;
+  background:#000; box-shadow:0 30px 60px rgba(0,0,0,.4), 0 0 0 1px rgba(47,242,205,.04);
+  aspect-ratio:16/9; margin:34px 0 18px; }
+.demo-frame iframe{ width:100%; height:100%; border:0; display:block; }
+.demo-frame .demo-overlay{ position:absolute; top:12px; right:12px; z-index:2; display:flex; gap:6px;
+  background:rgba(8,10,12,.78); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  border:1px solid var(--line-bright); border-radius:8px; padding:4px; }
+.demo-frame .demo-overlay a{ display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:11px; color:var(--accent); padding:6px 10px; border-radius:5px;
+  border-bottom:0; transition:background .15s; }
+.demo-frame .demo-overlay a:hover{ background:rgba(47,242,205,.12); }
+.cap{ font-size:13px; color:var(--dim); margin:4px 2px 0; }
+
+/* ====== code blocks ====== */
+pre{ background:var(--bg-2); border:1px solid var(--line); border-radius:10px;
+  padding:18px 20px; overflow-x:auto; margin:18px 0 22px; font-size:13px; line-height:1.55;
+  -webkit-overflow-scrolling:touch; }
+pre code{ font-family:var(--mono); color:#d8e0e3; background:none; padding:0; font-size:13px; }
+.lang-tag{ display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; color:var(--dimmer);
+  text-transform:uppercase; margin-bottom:8px; }
+/* very light syntax tinting via classes */
+.k{ color:#e4c58a; } /* keyword */
+.t{ color:#9fe6ff; } /* type */
+.c{ color:#5a6770; font-style:italic; } /* comment */
+.s{ color:#bff04a; } /* string/literal */
+.n{ color:#e8a4ff; } /* number */
+.fn{ color:#7ce0c5; } /* function */
+
+/* ====== column-pair ====== */
+.cols{ display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:18px 0 22px; }
+.cols > .col{ min-width:0; }
+.cols pre{ margin:0; }
+@media (max-width:680px){ .cols{ grid-template-columns:1fr; } }
+
+/* ====== channel breakdown card ====== */
+.channels{ border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin:22px 0; background:var(--bg-2); }
+.channels .ch-h{ font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--dimmer); margin-bottom:12px; font-family:var(--mono); }
+.channels .ch-row{ display:flex; align-items:baseline; gap:14px; font-family:var(--mono); font-size:13px; padding:5px 0; border-top:1px solid rgba(255,255,255,.03); }
+.channels .ch-row:first-of-type{ border-top:0; }
+.channels .ch-row b{ color:var(--accent); width:18px; font-weight:700; font-size:14px; }
+.channels .ch-row span{ color:var(--txt); }
+.channels .ch-row em{ color:var(--dim); margin-left:auto; font-size:11px; }
+
+/* ====== quotes ====== */
+.quote{ border-left:2px solid var(--accent); padding:14px 18px; margin:18px 0; background:rgba(47,242,205,.04);
+  border-radius:0 8px 8px 0; }
+.quote p{ margin:0 0 6px; }
+.quote .who{ font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--accent); }
+.quote .who b{ font-weight:700; }
+.quote .who span{ color:var(--dim); margin-left:6px; }
+
+/* Discord style attribution log */
+.log{ background:var(--bg-2); border:1px solid var(--line); border-radius:12px; padding:8px 0; margin:22px 0; }
+.log .msg{ padding:10px 22px; border-top:1px solid rgba(255,255,255,.03); }
+.log .msg:first-child{ border-top:0; }
+.log .who{ font-family:var(--mono); font-size:11.5px; letter-spacing:.02em; margin-bottom:4px; }
+.log .who b{ color:var(--accent); font-weight:700; }
+.log .who.duck b{ color:#ffce5e; }
+.log .who.tront b{ color:#a4e3ff; }
+.log .who.nuka b{ color:#e8a4ff; }
+.log .who .when{ color:var(--dimmer); margin-left:8px; font-weight:400; }
+.log .what{ color:var(--txt); font-size:14px; line-height:1.55; }
+.log .what em{ color:var(--dim); font-style:italic; }
+.log .what code{ font-family:var(--mono); font-size:12px; color:var(--accent); background:rgba(47,242,205,.06); padding:1px 5px; border-radius:4px; }
+
+/* ====== images ====== */
+figure{ margin:24px 0; }
+figure img{ width:100%; display:block; border:1px solid var(--line-bright); border-radius:10px;
+  box-shadow:0 14px 36px rgba(0,0,0,.4); }
+figcaption{ font-size:12.5px; color:var(--dim); margin-top:10px; text-align:center; }
+
+/* ====== gotcha callout ====== */
+.callout{ border:1px solid rgba(255,206,94,.3); background:rgba(255,206,94,.04);
+  border-left:3px solid var(--warn); padding:18px 22px; border-radius:10px; margin:22px 0; }
+.callout .tag{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--warn); margin-bottom:8px; }
+.callout p:last-child{ margin-bottom:0; }
+
+/* ====== Stack Overflow mirror ====== */
+.so{ background:#0a0c0f; border:1px solid var(--line-bright); border-radius:12px; padding:0; margin:24px 0;
+  overflow:hidden; }
+.so .so-h{ background:rgba(244,128,36,.08); border-bottom:1px solid rgba(244,128,36,.2);
+  padding:18px 24px; }
+.so .so-h .archive-tag{ display:inline-block; font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+  text-transform:uppercase; color:#f48024; background:rgba(244,128,36,.1);
+  padding:3px 8px; border-radius:4px; margin-bottom:8px; }
+.so .so-h h3{ font-family:var(--sans); font-size:20px; font-weight:600; margin:0 0 8px; color:#eef3f4; }
+.so .so-h .meta-line{ font-size:12px; color:var(--dim); }
+.so .so-body{ padding:18px 24px 24px; }
+.so .q, .so .ans{ padding:14px 0; border-top:1px solid var(--line); }
+.so .q{ border-top:0; padding-top:6px; }
+.so .label{ font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--dimmer); margin-bottom:8px; display:flex; align-items:center; gap:10px; }
+.so .label b{ color:var(--accent); font-weight:600; }
+.so .label .v{ background:rgba(47,242,205,.08); border:1px solid var(--line); border-radius:4px;
+  padding:1px 6px; color:var(--accent); }
+.so .body p{ font-size:14px; color:var(--txt); }
+.so .body pre{ font-size:12.5px; }
+.so .byline{ font-size:12px; color:var(--dim); margin-top:10px; font-style:italic; }
+.so .comments{ margin-top:14px; border-top:1px dashed var(--line); padding-top:10px; }
+.so .cm{ font-size:13px; color:var(--dim); padding:6px 0; border-top:1px dashed rgba(255,255,255,.03); }
+.so .cm:first-child{ border-top:0; }
+.so .cm b{ color:#a4e3ff; font-weight:600; }
+.so .cm em{ color:var(--dimmer); font-style:normal; margin-left:6px; font-size:11px; }
+.so .so-foot{ background:rgba(255,255,255,.02); border-top:1px solid var(--line);
+  padding:14px 24px; font-size:12px; color:var(--dim); }
+.so .so-foot a{ color:var(--accent); }
+
+/* ====== footer ====== */
+footer{ padding:50px 0 70px; border-top:1px solid var(--line); margin-top:20px; }
+footer .small{ font-size:12px; color:var(--dimmer); margin-top:14px; }
+
+/* TOC */
+.toc{ border:1px solid var(--line); border-radius:10px; padding:14px 20px; margin:24px 0; background:rgba(255,255,255,.012); }
+.toc h4{ font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--dimmer); font-weight:500; margin:0 0 8px; }
+.toc ol{ counter-reset:none; padding-left:18px; margin:0; }
+.toc ol li{ font-size:13.5px; margin-bottom:4px; color:var(--dim); }
+.toc ol li a{ color:var(--dim); border:0; }
+.toc ol li a:hover{ color:var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ HERO -->
+<header class="hero">
+<div class="wrap">
+  <p class="eyebrow">Tutorial · WebGL 2 · GLSL 3.0</p>
+  <h1>Bit-packed splat maps:<br>blending <b>32+ terrain textures</b> through one sampler.</h1>
+  <p class="tag">Standard splat maps cap at 4 layers and burn through GPU sampler slots. <b>Nukadelic</b> showed up in Discord and explained how to side-step the limit by smashing two 16-bit values into one 32-bit float per RGBA channel. This page is the explanation, the live demo, the credits, and a mirror of the 2015 Stack Overflow post the whole thing is built on.</p>
+
+  <div class="badges">
+    <span class="badge"><b>32</b> layers</span>
+    <span class="badge"><b>1</b> sampler</span>
+    <span class="badge"><b>16 → ∞</b> textures</span>
+    <span class="badge"><b>WebGL 2</b> required</span>
+  </div>
+
+  <div class="cta">
+    <a class="btn primary" href="demo/">Open live demo ↗</a>
+    <a class="btn ghost" href="#origin">Read the origin story</a>
+  </div>
+
+  <div class="toc">
+    <h4>On this page</h4>
+    <ol>
+      <li><a href="#problem">The problem — Unity's 16-sampler limit</a></li>
+      <li><a href="#trick-array">The trick (1) — Texture2DArray</a></li>
+      <li><a href="#trick-pack">The trick (2) — bit-packing the control map</a></li>
+      <li><a href="#math">The math — HLSL vs GLSL</a></li>
+      <li><a href="#pipeline">The pipeline — JS top-4 extraction</a></li>
+      <li><a href="#render">The render — fragment-shader unpack</a></li>
+      <li><a href="#gotcha">The gotcha — bilinear filtering destroys packed bits</a></li>
+      <li><a href="#demo">Live demo (embedded)</a></li>
+      <li><a href="#origin">Origin story / credits</a></li>
+      <li><a href="#nuka-node">Nukadelic's shader-graph node</a></li>
+      <li><a href="#so-mirror">Stack Overflow archive</a></li>
+      <li><a href="#further">Further reading</a></li>
+    </ol>
+  </div>
+</div>
+</header>
+
+<!-- ============================================================ PROBLEM -->
+<section id="problem">
+<div class="wrap">
+  <p class="eyebrow">01 · The problem</p>
+  <h2>You hit the 16-sampler wall faster than you think.</h2>
+
+  <p>The classic Unity-style splat-map approach assigns one terrain layer per channel of an RGBA texture: <code>R</code> = dirt, <code>G</code> = grass, <code>B</code> = rock, <code>A</code> = sand. The fragment shader reads the splat map and uses each channel as the blend weight for that layer's texture.</p>
+
+  <p>It works. It also caps at four layers per splat map. Want eight? Stack two splat maps and four more texture samples — now you've burned through nine sampler slots just for the ground. The URP TerrainLit shader-graph template caps out at <em>sixteen texture samplers</em>, full stop. Real games want twenty, thirty, fifty distinct ground materials. The math doesn't work.</p>
+
+  <div class="quote">
+    <p>did you know shadergraphs have a limit of 16 texture samplers</p>
+    <p class="who"><b>Duck [SCUG]</b><span>5/26/2026 8:00 PM</span></p>
+  </div>
+
+  <p>The way out has two pieces. The first is a different kind of texture binding. The second is a slightly evil little encoding trick to make that binding pay off.</p>
+</div>
+</section>
+
+<!-- ============================================================ TRICK 1 -->
+<section id="trick-array">
+<div class="wrap">
+  <p class="eyebrow">02 · The trick, part 1</p>
+  <h2>One sampler, many textures: <code>sampler2DArray</code>.</h2>
+
+  <p>A <b>texture array</b> is a stack of identically-sized images bound as a single GPU resource. You sample it with a 3-component coordinate — <code>uv.xy</code> picks a pixel like normal, and a third integer <code>z</code> picks <em>which layer</em>. The whole stack costs one sampler slot, regardless of whether it holds 8 layers or 256.</p>
+
+<pre><span class="lang-tag">GLSL 3.0 — fragment</span><code><span class="k">uniform</span> <span class="t">sampler2DArray</span> terrainTextures;  <span class="c">// 32 textures, one binding</span>
+
+<span class="t">vec3</span> grass = <span class="fn">texture</span>(terrainTextures, <span class="t">vec3</span>(uv, <span class="n">5.0</span>)).rgb;
+<span class="t">vec3</span> rock  = <span class="fn">texture</span>(terrainTextures, <span class="t">vec3</span>(uv, <span class="n">11.0</span>)).rgb;</code></pre>
+
+  <p>That alone fixes the sampler accounting. But the splat map is still RGBA — still four blend weights. You can <em>read</em> from 256 layers; you can only <em>blend</em> 4 of them per pixel unless you find more room in the control map.</p>
+
+  <p>This is where it gets clever.</p>
+</div>
+</section>
+
+<!-- ============================================================ TRICK 2 -->
+<section id="trick-pack">
+<div class="wrap">
+  <p class="eyebrow">03 · The trick, part 2</p>
+  <h2>Bit-packing the control map.</h2>
+
+  <p>A 32-bit float has 32 bits. A 16-bit integer needs 16. So one float can hold <em>two</em> 16-bit values if you're willing to bypass the float's numeric meaning and just treat it as a bag of bits — write the bits with integer ops, ship them through a <code>FloatType</code> texture, and read them back as integers on the other side.</p>
+
+  <p>That gives you eight 16-bit slots per RGBA pixel. Nukadelic's layout — the one that ends up in the demo on this page — packs them like this:</p>
+
+  <div class="channels">
+    <div class="ch-h">Control map · 4 layer IDs + 4 weights per pixel</div>
+    <div class="ch-row"><b>R</b><span>weight 0</span><em>upper 16 bits</em></div>
+    <div class="ch-row"><b>R</b><span>weight 1</span><em>lower 16 bits</em></div>
+    <div class="ch-row"><b>G</b><span>weight 2</span><em>upper 16 bits</em></div>
+    <div class="ch-row"><b>G</b><span>weight 3</span><em>lower 16 bits</em></div>
+    <div class="ch-row"><b>B</b><span>layer ID 0</span><em>upper 16 bits</em></div>
+    <div class="ch-row"><b>B</b><span>layer ID 1</span><em>lower 16 bits</em></div>
+    <div class="ch-row"><b>A</b><span>layer ID 2</span><em>upper 16 bits</em></div>
+    <div class="ch-row"><b>A</b><span>layer ID 3</span><em>lower 16 bits</em></div>
+  </div>
+
+  <div class="quote">
+    <p>red channel = weights 0 + 1, green channel = weights 2 + 3, blue channel = index 0 + index 1, alpha channel = index 2 + index 3. this allows to blend any 4 textures from the array2d — regardless of the amount of the terrain layers</p>
+    <p class="who"><b>Nukadelic</b><span>5/27/2026 11:25 AM</span></p>
+  </div>
+
+  <p>The crucial property: the four IDs in the B/A channels can be <em>any</em> values in the array, so different pixels of the map can mix completely different sets of four textures. Across the whole terrain you might touch all 32 (or 256, or however many you packed) — but a single pixel only ever blends four. That's the same constraint AAA terrain shaders run under.</p>
+
+  <figure>
+    <img src="img/nuka-bitshift.png" alt="Unreal shader graph BitShift1 custom function with sliders and debug output showing 4200, 64, 1, 5">
+    <figcaption>Nukadelic's BitShift1 custom function in Unreal — slider value <code>33.7</code> at integer position <code>5</code> packed into four debug outputs. Same math as the GLSL version, different toolchain.</figcaption>
+  </figure>
+</div>
+</section>
+
+<!-- ============================================================ MATH -->
+<section id="math">
+<div class="wrap">
+  <p class="eyebrow">04 · The math</p>
+  <h2>How to smash two values into one float.</h2>
+
+  <p>The 2015 Stack Overflow post that this technique traces back to (mirrored further down this page) phrases it in HLSL. The WebGL2 / Three.js demo uses the GLSL 3.0 equivalent. Same math, different keyword spellings:</p>
+
+  <div class="cols">
+    <div class="col">
+<pre><span class="lang-tag">HLSL — Adam Miles, SO 2015</span><code><span class="c">// Pack</span>
+<span class="t">float</span> a = <span class="n">0.45</span>;
+<span class="t">float</span> b = <span class="n">0.55</span>;
+<span class="t">uint</span> aS = a * <span class="n">0xFFFF</span>;
+<span class="t">uint</span> bS = b * <span class="n">0xFFFF</span>;
+<span class="t">uint</span> packed = (aS &lt;&lt; <span class="n">16</span>) | (bS &amp; <span class="n">0xFFFF</span>);
+<span class="t">float</span> f = <span class="fn">asfloat</span>(packed);
+
+<span class="c">// Unpack</span>
+<span class="t">uint</span> u = <span class="fn">asuint</span>(f);
+<span class="t">float</span> a2 = (u &gt;&gt; <span class="n">16</span>) / <span class="n">65535.0</span>;
+<span class="t">float</span> b2 = (u &amp; <span class="n">0xFFFF</span>) / <span class="n">65535.0</span>;</code></pre>
+    </div>
+    <div class="col">
+<pre><span class="lang-tag">GLSL 3.0 — this demo</span><code><span class="c">// Pack (JS side, written to a Float32 texture)</span>
+<span class="k">function</span> <span class="fn">packIntsToFloat</span>(a, b){
+  _u32[<span class="n">0</span>] = (a &lt;&lt; <span class="n">16</span>) | (b &amp; <span class="n">0xFFFF</span>);
+  <span class="k">return</span> _f32[<span class="n">0</span>];
+}
+
+<span class="c">// Unpack (fragment shader)</span>
+<span class="k">void</span> <span class="fn">unpackFloat</span>(<span class="t">float</span> p, <span class="k">out</span> <span class="t">float</span> a, <span class="k">out</span> <span class="t">float</span> b){
+  <span class="t">uint</span> u = <span class="fn">floatBitsToUint</span>(p);
+  a = <span class="t">float</span>(u &gt;&gt; <span class="n">16u</span>) / <span class="n">65535.0</span>;
+  b = <span class="t">float</span>(u &amp; <span class="n">0xFFFFu</span>) / <span class="n">65535.0</span>;
+}</code></pre>
+    </div>
+  </div>
+
+  <p>The HLSL keywords <code>asuint</code> / <code>asfloat</code> are bit-reinterprets — they take 32 bits and re-read them as the other type without changing a single bit. GLSL 3.0 names the same operation <code>floatBitsToUint</code> / <code>uintBitsToFloat</code>. JavaScript doesn't have such operators directly, so the demo does it with a 4-byte <code>ArrayBuffer</code> aliased by both a <code>Uint32Array</code> and a <code>Float32Array</code> — write through one view, read back through the other.</p>
+
+  <p>For pure integer pairs (the layer IDs, where you don't want any rescaling), the JS function above is enough. For 0–1 float pairs (the blend weights), one extra step quantizes each to a 16-bit integer first:</p>
+
+<pre><span class="lang-tag">JS</span><code><span class="k">function</span> <span class="fn">packFloatsToFloat</span>(a, b){
+  <span class="k">return</span> <span class="fn">packIntsToFloat</span>(<span class="fn">Math</span>.floor(a * <span class="n">65535</span>), <span class="fn">Math</span>.floor(b * <span class="n">65535</span>));
+}</code></pre>
+
+  <figure>
+    <img src="img/nuka-pack-unpack.png" alt="Unreal shader graph showing Pack and Unpack custom functions side by side, two sliders 0.688 and 0.552, packed RGBA values, unpacked debug output 0.6879 and 0.5519">
+    <figcaption>Pack / Unpack round-trip in Unreal: inputs <code>0.688</code> &amp; <code>0.552</code> survive as <code>0.6879</code> &amp; <code>0.5519</code> — the round-off comes from quantizing to 16-bit integers (1 / 65535 ≈ 1.5 × 10⁻⁵). Plenty of precision for blend weights.</figcaption>
+  </figure>
+</div>
+</section>
+
+<!-- ============================================================ PIPELINE -->
+<section id="pipeline">
+<div class="wrap">
+  <p class="eyebrow">05 · The CPU-side pipeline</p>
+  <h2>From a paint splat to a packed RGBA value.</h2>
+
+  <p>The CPU work happens once when the splat map is generated (and again whenever the user re-rolls it). Four steps:</p>
+
+  <h3>Step 1 — fill 32 (or N) textures into a <code>DataArrayTexture</code></h3>
+  <p>Allocate one big <code>Uint8Array</code> sized <code>texRes × texRes × 4 × N</code>, then write each layer's RGBA pixels into its slice. Three.js's <code>DataArrayTexture</code> takes that buffer directly. In the demo the layers are generated procedurally with canvas patterns; in a real game they'd be baked PBR textures loaded from disk.</p>
+
+<pre><span class="lang-tag">JS</span><code><span class="k">const</span> arrayData = <span class="k">new</span> <span class="fn">Uint8Array</span>(TEX_RES * TEX_RES * <span class="n">4</span> * NUM_TEXTURES);
+<span class="c">// ... draw each texture into arrayData[t * TEX_RES * TEX_RES * 4 + ...]</span>
+<span class="k">const</span> textureArray = <span class="k">new</span> <span class="fn">THREE</span>.DataArrayTexture(arrayData, TEX_RES, TEX_RES, NUM_TEXTURES);
+textureArray.wrapS = textureArray.wrapT = THREE.RepeatWrapping;
+textureArray.minFilter = THREE.LinearMipmapLinearFilter;
+textureArray.magFilter = THREE.LinearFilter;
+textureArray.generateMipmaps = <span class="k">true</span>;</code></pre>
+
+  <h3>Step 2 — paint splats into a wide raw-weights array</h3>
+  <p>Before you can extract a top-4 you need to know the weight of every layer at every pixel. Allocate a temporary array sized <code>W × H × N</code> floats (yes, it's big — 512 × 512 × 32 = ~32 MB at <code>Float32</code>) and add weight to it splat by splat. The demo uses smoothstep falloff so the brush has a soft edge:</p>
+
+<pre><span class="lang-tag">JS</span><code><span class="k">const</span> raw = <span class="k">new</span> <span class="fn">Float32Array</span>(MAP_SIZE * MAP_SIZE * NUM_TEXTURES);
+
+<span class="c">// Base layer 0 everywhere</span>
+<span class="k">for</span> (<span class="k">let</span> i = <span class="n">0</span>; i &lt; MAP_SIZE * MAP_SIZE; i++)
+  raw[i * NUM_TEXTURES] = <span class="n">1.0</span>;
+
+<span class="k">for</span> (<span class="k">let</span> s = <span class="n">0</span>; s &lt; numSplats; s++) {
+  <span class="k">const</span> cx = <span class="fn">Math</span>.random() * MAP_SIZE;
+  <span class="k">const</span> cy = <span class="fn">Math</span>.random() * MAP_SIZE;
+  <span class="k">const</span> radius = <span class="n">10</span> + <span class="fn">Math</span>.random() * <span class="n">50</span>;
+  <span class="k">const</span> tex = <span class="fn">Math</span>.floor(<span class="fn">Math</span>.random() * NUM_TEXTURES);
+
+  <span class="k">for</span> (<span class="k">let</span> y = ...; y &lt;= ...; y++)
+    <span class="k">for</span> (<span class="k">let</span> x = ...; x &lt;= ...; x++) {
+      <span class="k">const</span> dist = <span class="fn">Math</span>.hypot(x - cx, y - cy);
+      <span class="k">if</span> (dist &lt; radius) {
+        <span class="k">let</span> f = <span class="n">1</span> - dist / radius;
+        f = f * f * (<span class="n">3</span> - <span class="n">2</span> * f);  <span class="c">// smoothstep</span>
+        raw[(y * MAP_SIZE + x) * NUM_TEXTURES + tex] += f * <span class="n">3.0</span>;
+      }
+    }
+}</code></pre>
+
+  <h3>Step 3 — top-4 extraction per pixel</h3>
+  <p>This is the compression. For every pixel, list which layers have any weight at all, sort by weight descending, take the four heaviest, normalize them to sum to 1. The other twenty-eight layers' contributions at that pixel are <em>discarded</em>. This is the same compromise Unity's terrain pipeline makes (and you don't notice, because in practice no pixel ever blends more than a few materials at once).</p>
+
+<pre><span class="lang-tag">JS</span><code><span class="k">for</span> (<span class="k">let</span> i = <span class="n">0</span>; i &lt; MAP_SIZE * MAP_SIZE; i++) {
+  <span class="k">const</span> list = [];
+  <span class="k">for</span> (<span class="k">let</span> t = <span class="n">0</span>; t &lt; NUM_TEXTURES; t++) {
+    <span class="k">const</span> w = raw[i * NUM_TEXTURES + t];
+    <span class="k">if</span> (w &gt; <span class="n">0</span>) list.push({ idx: t, weight: w });
+  }
+  list.sort((a, b) =&gt; b.weight - a.weight);
+  <span class="k">const</span> top = list.slice(<span class="n">0</span>, <span class="n">4</span>);
+  <span class="k">while</span> (top.length &lt; <span class="n">4</span>) top.push({ idx: <span class="n">0</span>, weight: <span class="n">0</span> });
+  <span class="k">const</span> sum = top[<span class="n">0</span>].weight + top[<span class="n">1</span>].weight + top[<span class="n">2</span>].weight + top[<span class="n">3</span>].weight;
+  ...
+}</code></pre>
+
+  <h3>Step 4 — pack into a 4-channel <code>Float32</code> texture</h3>
+  <p>Pack the four normalized weights into R/G and the four IDs into B/A using the helpers from the previous section:</p>
+
+<pre><span class="lang-tag">JS</span><code>controlData[i * <span class="n">4</span> + <span class="n">0</span>] = <span class="fn">packFloatsToFloat</span>(top[<span class="n">0</span>].weight / sum, top[<span class="n">1</span>].weight / sum);
+controlData[i * <span class="n">4</span> + <span class="n">1</span>] = <span class="fn">packFloatsToFloat</span>(top[<span class="n">2</span>].weight / sum, top[<span class="n">3</span>].weight / sum);
+controlData[i * <span class="n">4</span> + <span class="n">2</span>] = <span class="fn">packIntsToFloat</span>(top[<span class="n">0</span>].idx, top[<span class="n">1</span>].idx);
+controlData[i * <span class="n">4</span> + <span class="n">3</span>] = <span class="fn">packIntsToFloat</span>(top[<span class="n">2</span>].idx, top[<span class="n">3</span>].idx);</code></pre>
+
+  <p>Wrap in a <code>DataTexture</code> with <code>RGBAFormat</code> + <code>FloatType</code>, set the filtering to <code>NearestFilter</code> (see the gotcha section below) and upload. That's the entire CPU side.</p>
+</div>
+</section>
+
+<!-- ============================================================ RENDER -->
+<section id="render">
+<div class="wrap">
+  <p class="eyebrow">06 · The GPU-side render</p>
+  <h2>The fragment shader, end-to-end.</h2>
+
+  <p>Per pixel, the shader does six things: sample the control map, unpack the four weights, unpack the four IDs, sample the texture array four times, multiply each sample by its weight, and sum. That's it.</p>
+
+<pre><span class="lang-tag">GLSL 3.0 — fragment shader</span><code><span class="k">precision</span> highp <span class="t">float</span>;
+<span class="k">precision</span> highp <span class="t">int</span>;
+<span class="k">precision</span> highp <span class="t">sampler2DArray</span>;
+
+<span class="k">uniform</span> <span class="t">sampler2D</span>      controlMap;       <span class="c">// the Float32 bit-packed splat</span>
+<span class="k">uniform</span> <span class="t">sampler2DArray</span> terrainTextures;  <span class="c">// all N textures, 1 binding</span>
+<span class="k">uniform</span> <span class="t">float</span>          uTiling;
+
+<span class="k">in</span>  <span class="t">vec2</span> vUv;
+<span class="k">out</span> <span class="t">vec4</span> fragColor;
+
+<span class="k">void</span> <span class="fn">unpackFloat</span>(<span class="t">float</span> p, <span class="k">out</span> <span class="t">float</span> a, <span class="k">out</span> <span class="t">float</span> b){
+  <span class="t">uint</span> u = <span class="fn">floatBitsToUint</span>(p);
+  a = <span class="t">float</span>(u &gt;&gt; <span class="n">16u</span>) / <span class="n">65535.0</span>;
+  b = <span class="t">float</span>(u &amp; <span class="n">0xFFFFu</span>) / <span class="n">65535.0</span>;
+}
+<span class="k">void</span> <span class="fn">unpackInt</span>(<span class="t">float</span> p, <span class="k">out</span> <span class="t">float</span> a, <span class="k">out</span> <span class="t">float</span> b){
+  <span class="t">uint</span> u = <span class="fn">floatBitsToUint</span>(p);
+  a = <span class="t">float</span>(u &gt;&gt; <span class="n">16u</span>);
+  b = <span class="t">float</span>(u &amp; <span class="n">0xFFFFu</span>);
+}
+
+<span class="k">void</span> <span class="fn">main</span>(){
+  <span class="t">vec4</span> data = <span class="fn">texture</span>(controlMap, vUv);
+  <span class="t">float</span> w0, w1, w2, w3, i0, i1, i2, i3;
+  <span class="fn">unpackFloat</span>(data.r, w0, w1);
+  <span class="fn">unpackFloat</span>(data.g, w2, w3);
+  <span class="fn">unpackInt</span>(data.b, i0, i1);
+  <span class="fn">unpackInt</span>(data.a, i2, i3);
+
+  <span class="t">vec2</span> tileUv = vUv * uTiling;
+  <span class="t">vec3</span> col = <span class="fn">texture</span>(terrainTextures, <span class="t">vec3</span>(tileUv, i0)).rgb * w0
+           + <span class="fn">texture</span>(terrainTextures, <span class="t">vec3</span>(tileUv, i1)).rgb * w1
+           + <span class="fn">texture</span>(terrainTextures, <span class="t">vec3</span>(tileUv, i2)).rgb * w2
+           + <span class="fn">texture</span>(terrainTextures, <span class="t">vec3</span>(tileUv, i3)).rgb * w3;
+
+  fragColor = <span class="t">vec4</span>(col, <span class="n">1.0</span>);
+}</code></pre>
+
+  <p>The four <code>texture()</code> calls all sample the same physical binding — the texture array — just at different <code>z</code> indices. Total sampler-slot cost: 2 (one for the control map, one for the array). Same fragment shader scales from 4 layers in the array to 4,000 with zero change.</p>
+</div>
+</section>
+
+<!-- ============================================================ GOTCHA -->
+<section id="gotcha">
+<div class="wrap">
+  <p class="eyebrow">07 · The gotcha</p>
+  <h2>Bilinear filtering destroys bit-packed data.</h2>
+
+  <div class="callout">
+    <p class="tag">Trap</p>
+    <p>You cannot let the GPU linearly interpolate a bit-packed texture. If it blends a pixel containing layer ID <code>5</code> with a neighbouring pixel containing layer ID <code>27</code>, the bits in between are <em>not</em> a valid packed pair — they decode to garbage like ID <code>16</code> and ID <code>3</code>, neither of which were actually painted there.</p>
+  </div>
+
+  <p>The fix is one line on the JS side:</p>
+
+<pre><span class="lang-tag">JS</span><code>controlMap.magFilter = controlMap.minFilter = THREE.NearestFilter;</code></pre>
+
+  <p>Nearest-neighbour sampling means the GPU snaps to the nearest control-map pixel and reads its bits intact. The catch is that you lose smooth blending across control-map pixel boundaries — material transitions look blocky if the control map is low-resolution.</p>
+
+  <p>The honest fix (used in shipping AAA terrain shaders): the fragment shader manually fetches the <em>four</em> nearest control-map texels itself, unpacks each one independently, samples the texture array for all of them, and does the bilinear blend in math at the very end. More work in the shader, but the visual smoothness comes back. The demo on this page doesn't bother because the control map is 512² over a 200-unit plane — the pixels are small enough that you'd have to zoom in hard to see the seams.</p>
+</div>
+</section>
+
+<!-- ============================================================ DEMO -->
+<section id="demo">
+<div class="wrap">
+  <p class="eyebrow">08 · The result</p>
+  <h2>Live demo.</h2>
+
+  <p>32 procedurally-generated textures, 200 random paint splats, top-4 extraction per pixel, packed into a 512² <code>RGBA / Float32</code> control map. One sampler binding holds all 32 textures; one binding holds the splat map. The fragment shader does the same six operations as the snippet above.</p>
+
+  <div class="demo-frame">
+    <div class="demo-overlay">
+      <a href="demo/" target="_blank" rel="noopener">Fullscreen ↗</a>
+    </div>
+    <iframe src="demo/" loading="lazy" title="TerrainArray live demo" allow="fullscreen"></iframe>
+  </div>
+  <p class="cap">Drag to orbit. Hover the right-hand palette to isolate a layer. Click to lock isolation. Hit <em>Show layer indices</em> to swap every texture for a giant index number — useful for tracing which IDs the bit-pack landed on.</p>
+</div>
+</section>
+
+<!-- ============================================================ ORIGIN -->
+<section id="origin">
+<div class="wrap">
+  <p class="eyebrow">09 · Origin story</p>
+  <h2>Discord, May 2026.</h2>
+
+  <p>The technique on this page didn't come out of a paper or a tutorial. It came out of <b>Duck (SCUG)</b> hitting Unity's sampler wall while working on a procgen terrain shader, and <b>Nukadelic</b> walking into the Discord the next morning with the answer and the artefacts to back it up. Trimmed log:</p>
+
+  <div class="log">
+    <div class="msg">
+      <p class="who duck"><b>Duck [SCUG]</b><span class="when">5/26/2026 7:30 PM</span></p>
+      <p class="what">argh oh man i was hoping the new terrain nodes would work but i have to use the stupid terrainlit shadergraph template stupid</p>
+    </div>
+    <div class="msg">
+      <p class="who duck"><b>Duck [SCUG]</b><span class="when">5/26/2026 8:03 PM</span></p>
+      <p class="what">if i want 8 terrain layers i have to use this. did you know shadergraphs have a limit of 16 texture samplers</p>
+    </div>
+    <div class="msg">
+      <p class="who tront"><b>!Tront [DEMI]</b><span class="when">5/26/2026 8:00 PM</span></p>
+      <p class="what">gotta pack those 4 channels. maybe split it even more than that</p>
+    </div>
+    <div class="msg">
+      <p class="who duck"><b>Duck [SCUG]</b><span class="when">5/26/2026 8:03 PM</span></p>
+      <p class="what">how was nuka able to do unlimited layers?</p>
+    </div>
+    <div class="msg">
+      <p class="who tront"><b>!Tront [DEMI]</b><span class="when">5/26/2026 8:16 PM</span></p>
+      <p class="what">packing like crazy he literally pasted a link that showed how it was done I can only vaguely remember how. was it 255 channels or something IDK what it was something with IDs or something. <em>@Nukadelic help us please</em></p>
+    </div>
+    <div class="msg">
+      <p class="who nuka"><b>Nukadelic</b><span class="when">5/27/2026 8:27 AM</span></p>
+      <p class="what">pretty much yea, it gets a bit convoluted when u would want to blend multiple layers at the same point (road + dirt layer → blends into grass + snow). the amount of textures i was able to pack was limited to the max texture resolution that the Quest2 could handle + how much resolution did they want to have the terrain texture. i dont have the source code — here is what was able to find from other channels that i shared this on before:</p>
+      <p class="what"><code>uint u = asuint( v );</code><br><code>uint i1 = ( u &amp; 0x0000000F );</code><br><code>uint i2 = ( u &amp; 0x000000F0 );</code><br><code>uint i3 = ( u &amp; 0x00000F00 );</code></p>
+      <p class="what">this is just the node to test the binary packing, not the actual binary packing itself. pretty sure this was it: <em>Pack two floats within range into one float</em>. this might also be helpful — somewhat of a hack to have better looking textures without making them 4K. <em>[attached TextureNoTile.zip + message.txt]</em></p>
+    </div>
+    <div class="msg">
+      <p class="who nuka"><b>Nukadelic</b><span class="when">5/27/2026 11:25 AM</span></p>
+      <p class="what">np, the float packing is not really needed here if you are targeting the desktop — i basically used to pack multiple tex2d_array indexs in one paint texture for the quest. so in the end it would be something like — red channel = weights 0 + 1, green channel = weights 2 + 3, blue channel = index 0 + index 1, alpha channel = index 2 + index 3. this allows to blend any 4 textures from the array2d — regardless of the amount of the terrain layers.</p>
+    </div>
+    <div class="msg">
+      <p class="who tront"><b>!Tront [DEMI]</b><span class="when">5/27/2026 1:45 PM</span></p>
+      <p class="what">damn thats so smart</p>
+    </div>
+    <div class="msg">
+      <p class="who duck"><b>Duck [SCUG]</b><span class="when">5/27/2026 3:26 PM</span></p>
+      <p class="what">woaghh that's cool. i'm guessing the packing happened in the control map? or maps probably. also that print node is sweet</p>
+    </div>
+  </div>
+
+  <h3>Credits</h3>
+  <ul>
+    <li><b style="color:#e8a4ff;">Nukadelic</b> — the technique. Built and shipped the Quest 2 version with tex2d_array index packing in a paint texture. Came through with the explanation, the screenshots, and a shader-graph node ZIP from a project he no longer has source for.</li>
+    <li><b style="color:#a4e3ff;">Adam Miles</b> — the <code>asfloat</code> / <code>asuint</code> pair-packing pattern, <a href="https://stackoverflow.com/questions/32915724/pack-two-floats-within-range-into-one-float/32921832#32921832" target="_blank" rel="noopener">answered on Stack Overflow Oct 3 2015</a>. Mirrored further down this page in case SO ever goes dark.</li>
+    <li><b style="color:#ffce5e;">Duck (SCUG)</b> — for hitting the wall in public and asking the right question.</li>
+    <li><b>Trent Sterling</b> — this page, the Three.js / WebGL2 port, the procedural texture library.</li>
+  </ul>
+</div>
+</section>
+
+<!-- ============================================================ NUKA NODE -->
+<section id="nuka-node">
+<div class="wrap">
+  <p class="eyebrow">10 · Source artefact</p>
+  <h2>Nukadelic's shader-graph node.</h2>
+
+  <p>This is the <code>message.txt</code> Nukadelic dropped into Discord on 5/27/2026 — the Unreal custom-function node he used to debug-visualize the binary packing on a real game. It's not the production packer (he lost that source); it's the test rig that proves the bits are landing where they should. 8 nibbles unpacked from one uint, drawn as 8 sliders showing each 4-bit value as a 0–1 float, plus a bit-grid showing each individual bit lit green or red.</p>
+
+  <p>The mechanics are identical to the JS / GLSL versions above — <code>asuint</code> takes a float as a bag of bits, <code>&amp;</code> masks individual nibbles out, the row of debug visualizations confirms the round-trip. It just happens to live in Unreal's HLSL dialect instead of WebGL's GLSL.</p>
+
+<pre><span class="lang-tag">HLSL — Nukadelic, Unreal custom function, 2024-ish</span><code><span class="t">uint</span> u = <span class="fn">asuint</span>( v );
+
+<span class="t">uint</span> i1 = ( u &amp; <span class="n">0x0000000F</span> );
+<span class="t">uint</span> i2 = ( u &amp; <span class="n">0x000000F0</span> );
+<span class="t">uint</span> i3 = ( u &amp; <span class="n">0x00000F00</span> );
+<span class="t">uint</span> i4 = ( u &amp; <span class="n">0x0000F000</span> );
+<span class="t">uint</span> i5 = ( u &amp; <span class="n">0x000F0000</span> );
+<span class="t">uint</span> i6 = ( u &amp; <span class="n">0x00F00000</span> );
+<span class="t">uint</span> i7 = ( u &amp; <span class="n">0x0F000000</span> );
+<span class="t">uint</span> i8 = ( u &amp; <span class="n">0xF0000000</span> );
+
+<span class="t">float</span> a1 = ( i1 ) / <span class="n">15.0</span>;
+<span class="t">float</span> a2 = ( i2 ) / <span class="n">15.0</span>;
+<span class="t">float</span> a3 = ( i3 ) / <span class="n">15.0</span>;
+<span class="t">float</span> a4 = ( i4 ) / <span class="n">15.0</span>;
+<span class="t">float</span> a5 = ( i5 ) / <span class="n">15.0</span>;
+<span class="t">float</span> a6 = ( i6 ) / <span class="n">15.0</span>;
+<span class="t">float</span> a7 = ( i7 ) / <span class="n">15.0</span>;
+<span class="t">float</span> a8 = ( i8 ) / <span class="n">15.0</span>;
+
+<span class="t">uint</span> b1 = i1;
+<span class="t">uint</span> b2 = i2 &gt;&gt; <span class="n">4</span>;
+<span class="t">uint</span> b3 = i3 &gt;&gt; <span class="n">8</span>;
+<span class="t">uint</span> b4 = i4 &gt;&gt; <span class="n">12</span>;
+<span class="t">uint</span> b5 = i5 &gt;&gt; <span class="n">16</span>;
+<span class="t">uint</span> b6 = i6 &gt;&gt; <span class="n">20</span>;
+<span class="t">uint</span> b7 = i7 &gt;&gt; <span class="n">24</span>;
+<span class="t">uint</span> b8 = i8 &gt;&gt; <span class="n">28</span>;
+
+<span class="c">// ... 8-column UV-space visualization
+// row 1: 8 sliders, each showing a nibble as a 0-1 lerp
+// rows 2-5: 4-bit grid per column, each cell lit if (u &amp; (1 &lt;&lt; n)) != 0</span></code></pre>
+
+  <p class="cap">The full file (with the UV-space drawing code that paints the debug strips) is 101 lines and shipped with the repo at <code>nuka-message.txt</code> — see the repo for the literal source.</p>
+</div>
+</section>
+
+<!-- ============================================================ SO MIRROR -->
+<section id="so-mirror">
+<div class="wrap">
+  <p class="eyebrow">11 · Archive</p>
+  <h2>Stack Overflow: <em>Pack two floats within range into one float</em>.</h2>
+
+  <p>The post Nukadelic linked is the ancestor of this whole technique. Mirrored verbatim below — title, both answers (Adam Miles' accepted high-vote one and SmugLispWeenie's counterpoint), the comment thread, the score, the byline — stripped of the nav clutter and the unrelated "Hot Network Questions" sidebar. Source: <a href="https://stackoverflow.com/questions/32915724/pack-two-floats-within-range-into-one-float/32921832#32921832" target="_blank" rel="noopener">stackoverflow.com/q/32915724</a>, scraped 2026-05-28.</p>
+
+  <div class="so">
+    <div class="so-h">
+      <span class="archive-tag">Mirrored content · CC BY-SA</span>
+      <h3>Pack two floats within range into one float</h3>
+      <div class="meta-line">Asked <b>Oct 2, 2015</b> · Viewed 5k+ times · Tags: <code>encoding</code> <code>hlsl</code> <code>decoding</code></div>
+    </div>
+    <div class="so-body">
+
+      <div class="q">
+        <div class="label"><b>QUESTION</b><span class="v">+3</span></div>
+        <div class="body">
+          <p>In HLSL, how would I go about packing two floats within the range of 0–1 into one float with an optimal precision. This would be incredibly useful to compress my GBuffer further.</p>
+          <p class="byline">— Miguel P, Oct 2 2015 at 20:55</p>
+        </div>
+      </div>
+
+      <div class="ans">
+        <div class="label"><b>ANSWER</b><span class="v">+10 · accepted</span></div>
+        <div class="body">
+<pre><span class="lang-tag">HLSL</span><code><span class="c">//Packing</span>
+<span class="t">float</span> a = <span class="n">0.45</span>;
+<span class="t">float</span> b = <span class="n">0.55</span>;
+<span class="t">uint</span> aScaled = a * <span class="n">0xFFFF</span>;
+<span class="t">uint</span> bScaled = b * <span class="n">0xFFFF</span>;
+<span class="t">uint</span> abPacked = (aScaled &lt;&lt; <span class="n">16</span>) | (bScaled &amp; <span class="n">0xFFFF</span>);
+<span class="t">float</span> finalFloat = <span class="fn">asfloat</span>(abPacked);
+
+<span class="c">//Unpacking</span>
+<span class="t">float</span> inputFloat = finalFloat;
+<span class="t">uint</span> uintInput = <span class="fn">asuint</span>(inputFloat);
+<span class="t">float</span> aUnpacked = (uintInput &gt;&gt; <span class="n">16</span>) / <span class="n">65535.0f</span>;
+<span class="t">float</span> bUnpacked = (uintInput &amp; <span class="n">0xFFFF</span>) / <span class="n">65535.0f</span>;</code></pre>
+          <p class="byline">— Adam Miles, Oct 3 2015 at 11:06</p>
+
+          <div class="comments">
+            <div class="cm"><b>Jongware</b> <em>over a year ago</em><br>Nice. The "optimal precision" part is clearly bogus, since the number of available bits gets halved. So whatever can be stored in what's left can be considered 'optimal'.</div>
+            <div class="cm"><b>Adam Miles</b> <em>over a year ago</em><br>Yeah, I took it to mean "don't waste any bits" rather than "do the impossible"!</div>
+            <div class="cm"><b>Richard Klassen</b> <em>over a year ago</em><br>Thank you!!! How does this answer only have 3 upvotes!?</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ans">
+        <div class="label"><b>ANSWER</b><span class="v">+1</span></div>
+        <div class="body">
+          <p>Converting floating point numbers to fixed point integers is an error prone idea, due to floats covering much larger magnitudes. Say unpacking sRGB will give you <code>pow(255, 2.2)</code> values, which are larger than <code>0xffff</code>, and you will need several times that amount for robust HDR. Generally fixed point code is very fragile, obfuscated and a nightmare to debug. People invented floats for a good reason.</p>
+          <p>There are several 16-bit float formats. IEEE 16-bit float one is optimized for numbers between -1.0 to 1.0, but also support numbers up to 0x10000, just in case you need HDR, still so you will need to normalize your larger floats for it. Then there is bfloat16, which behaves like normal 32-bit float, just with less precision. IEEE 16-bit floats are widely supported by modern CPUs and GPUs, and can also be converted quickly even in software. bfloat16 is just gaining popularity, so you will have to research if it is suitable for your needs. Finally you can introduce your own 16-bit float format, using integer log function, which is provided by most CPUs as a single instruction.</p>
+          <p class="byline">— SmugLispWeenie, Aug 20 2019 at 20:46</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="so-foot">
+      Mirrored from <a href="https://stackoverflow.com/questions/32915724/pack-two-floats-within-range-into-one-float/32921832#32921832" target="_blank" rel="noopener">Stack Overflow #32915724</a> under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>. Content © respective authors. Mirrored as a precaution because the original is the load-bearing reference for the technique on this page, and the network is mortal.
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============================================================ FURTHER -->
+<section id="further">
+<div class="wrap">
+  <p class="eyebrow">12 · Further reading</p>
+  <h2>If you want to go further.</h2>
+  <ul>
+    <li><a href="demo/" target="_blank">The live demo</a> — full 32-layer playground with palette isolation and debug-index mode.</li>
+    <li><a href="https://stackoverflow.com/questions/32915724/pack-two-floats-within-range-into-one-float/32921832#32921832" target="_blank" rel="noopener">SO #32915724 — Pack two floats within range into one float</a> — original Adam Miles answer (or the mirror above if it ever 404s).</li>
+    <li><a href="https://threejs.org/docs/#api/en/textures/DataArrayTexture" target="_blank" rel="noopener">three.js — DataArrayTexture</a> — the API the demo uses for the 32-layer stack.</li>
+    <li><a href="https://registry.khronos.org/OpenGL-Refpages/gl4/html/floatBitsToUint.xhtml" target="_blank" rel="noopener">GLSL — <code>floatBitsToUint</code></a> — the bit-reinterpret primitive that makes shader-side unpacking work.</li>
+    <li><a href="https://github.com/TrentSterling/terrainarray" target="_blank" rel="noopener">github.com/TrentSterling/terrainarray</a> — the source of this page, the demo, and Nukadelic's raw <code>message.txt</code>.</li>
+  </ul>
+
+  <p>If you ship something built on this, drop a note in the <a href="https://tront.xyz/discord/" target="_blank" rel="noopener">Discord</a>. The technique deserves more sunlight than it's had.</p>
+</div>
+</section>
+
+<footer>
+<div class="wrap">
+  <p style="margin:0;font-size:14px;color:var(--dim);"><b style="color:var(--txt);">TerrainArray</b> · a one-page tutorial · published <a href="https://tront.xyz/" style="color:var(--accent);">tront.xyz</a> · 2026-05-29</p>
+  <p class="small">Page text and the Three.js demo are MIT, source on <a href="https://github.com/TrentSterling/terrainarray" target="_blank" rel="noopener">GitHub</a>. The Stack Overflow excerpt is reproduced under CC BY-SA 4.0 with attribution to its original authors. Nukadelic's <code>message.txt</code> is reproduced with permission.</p>
+</div>
+</footer>
+
+</body>
+</html>
