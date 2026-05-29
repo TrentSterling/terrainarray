@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TerrainArray — Demo</title>
-<meta name="description" content="Live WebGL2 demo — 32 procedural textures blended through one sampler2DArray via bit-packed splat map.">
-<meta property="og:title" content="TerrainArray — Demo">
+<title>TerrainArray / demo</title>
+<meta name="description" content="Live WebGL2 demo: 32 procedural textures blended through one sampler2DArray via bit-packed splat map.">
+<meta property="og:title" content="TerrainArray / demo">
 <meta property="og:description" content="32 textures, 1 sampler. Bit-packed splat-map terrain in WebGL2.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://tront.xyz/terrainarray/demo/">
@@ -174,7 +174,7 @@ input[type=range]::-moz-range-thumb{ width:14px; height:14px; border:0; border-r
     <span class="badge"><b>16 → ∞</b><span>textures</span></span>
   </div>
 
-  <p class="desc">A single <code>sampler2DArray</code> holds all 32 patterns, sidestepping WebGL's 16-texture limit. Per pixel only the <span class="hi">top 4 layers</span> survive — their IDs and weights packed into one RGBA value, which the shader unpacks and blends live.</p>
+  <p class="desc">A single <code>sampler2DArray</code> holds all 32 patterns, sidestepping WebGL's 16-texture limit. Per pixel only the <span class="hi">top 4 layers</span> survive; their IDs and weights get packed into one RGBA value, which the shader unpacks and blends live.</p>
 
   <div class="channels">
     <div class="ch-h">control map · 1 packed value / pixel</div>
@@ -223,7 +223,7 @@ const vertexShader = /* glsl */`
   out vec2 vUv;
   void main(){
     vUv = uv;
-    // flat sample — the demo is about texture packing, not terrain relief
+    // flat sample; the demo is about texture packing, not terrain relief
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
   }
 `;
@@ -330,7 +330,7 @@ textureArray.generateMipmaps = true;
 
 const controlData = new Float32Array(MAP_SIZE*MAP_SIZE*4);
 const controlMap = new THREE.DataTexture(controlData, MAP_SIZE, MAP_SIZE, THREE.RGBAFormat, THREE.FloatType);
-controlMap.magFilter = controlMap.minFilter = THREE.NearestFilter; // MUST be nearest — packed bits can't interpolate
+controlMap.magFilter = controlMap.minFilter = THREE.NearestFilter; // MUST be nearest; packed bits can't interpolate
 
 const material = new THREE.ShaderMaterial({
   vertexShader, fragmentShader, glslVersion: THREE.GLSL3,
@@ -342,7 +342,7 @@ const material = new THREE.ShaderMaterial({
   }
 });
 
-const geometry = new THREE.PlaneGeometry(200,200,1,1); // flat — no relief
+const geometry = new THREE.PlaneGeometry(200,200,1,1); // flat; no relief
 geometry.rotateX(-Math.PI/2);
 scene.add(new THREE.Mesh(geometry, material));
 
